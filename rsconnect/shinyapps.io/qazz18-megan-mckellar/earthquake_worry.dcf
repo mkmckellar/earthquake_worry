@@ -1,0 +1,13 @@
+name: earthquake_worry
+title: earthquake_worry
+username: qazz18-megan-mckellar
+account: qazz18-megan-mckellar
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15940531
+bundleId: 11120506
+url: https://qazz18-megan-mckellar.shinyapps.io/earthquake_worry/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: docs
