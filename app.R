@@ -17,6 +17,11 @@ library(shinybusy)
 # I don't think I need to open the entire 538 library
 san_andreas <- fivethirtyeight::san_andreas
 
+san_andreas_traits <- san_andreas |> 
+  select(age, hhold_income, region, female) |> 
+  rename("household income" = hhold_income,
+         "sex" = female)
+
 # missing data by columns
 #sapply(san_andreas, function(x) sum(is.na(x)))
 
@@ -27,42 +32,70 @@ san_andreas <- fivethirtyeight::san_andreas
 
 
 # Define UI for application that draws a histogram
-ui <- fluidPage(
-  
-  # Application title
-  titlePanel("Earthquake Worry by U.S. Region"),
-  
-  # Sidebar with a slider input for number of bins 
-  # this function doesn't rely on calling a data object
-  sidebarLayout(
-    sidebarPanel(
-      selectInput(inputId = "selected.worry",
-                  label = "Select type of earthquake worry for plot",
-                  selected = "General",
-                  choices = c("General", "The Big One"),
-                  multiple = FALSE),
-      p("'The Big One' refers to a massive, catastrophic earthquake."),
-      hr(),
-      selectInput(inputId = "selected.regions",
-                  label = "Select regions for table",
-                  selected = unique(san_andreas$region)[1:2],
-                  choices = unique(san_andreas$region),
-                  multiple = TRUE),
-      
-      hr(),
-      p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
-               "Statistical group of states as defined by the US Census Bureau.")),
-      p("Data sourced from fivethirtyeight R package.")
-    ),
-    # Show a plot of the generated distribution
-    mainPanel(
-      add_busy_spinner(spin = "half-circle",
-                       position = "top-right"),
-      plotOutput(outputId = "responsePlot", width = "100%"),
-      hr(),
-      DT::dataTableOutput("responseTable")
-    )
-  )
+ui <- navbarPage(theme = "yeti",
+                 title = NULL,
+                 
+                 # first panel: general earthquake worry
+                 tabPanel(("Worry"),
+                           # Application title
+                          titlePanel("Earthquake Worry by U.S. Region"),
+
+                          # Sidebar with a slider input for number of bins 
+                          # this function doesn't rely on calling a data object
+                          sidebarLayout(
+                            sidebarPanel(
+                              selectInput(inputId = "selected.worry",
+                                          label = "Select type of earthquake worry for plot",
+                                          selected = "General",
+                                          choices = c("General", "The Big One"),
+                                          multiple = FALSE),
+                              p("'The Big One' refers to a massive, catastrophic earthquake."),
+                              hr(),
+                              p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
+                                       "Statistical group of states as defined by the US Census Bureau.")),
+                              p("Data sourced from fivethirtyeight R package.")
+                              ),
+                            # Show a plot of the generated distribution
+                            mainPanel(
+                              add_busy_spinner(spin = "half-circle",
+                                               position = "top-right"),
+                              plotOutput(outputId = "responsePlot1", width = "100%")
+                              )
+                            )
+                          ),
+                 
+                 # second panel: preparedness
+                 tabPanel(("Preparedness"),
+                          # application title
+                          titlePanel("Earthquake Preparedness in Response to Past Experience"),
+                          sidebarLayout(
+                            sidebarPanel(
+                              varSelectInput(inputId = "selected.trait",
+                                    label = "Select trait",
+                                    data = san_andreas_traits,
+                                    selected = "age"),
+                              hr(),
+                              # select regions for table
+                              selectInput(inputId = "selected.regions",
+                                          label = "Select regions for table",
+                                          selected = unique(san_andreas$region)[1:2],
+                                          choices = unique(san_andreas$region),
+                                          multiple = TRUE),
+                              hr(),
+                              p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
+                              "Statistical group of states as defined by the US Census Bureau.")),
+                              p("Data sourced from fivethirtyeight R package.")
+                              ),
+                            # Show a plot of the generated distribution
+                            mainPanel(
+                              add_busy_spinner(spin = "half-circle",
+                                               position = "top-right"),
+                              plotOutput(outputId = "responsePlot2", width = "100%"),
+                              hr(),
+                              DT::dataTableOutput("responseTable2")
+                              )
+                            )
+                          )
 )
 
 # Define server logic required to draw a histogram
@@ -70,7 +103,7 @@ server <- function(input, output) {
   
   # make a column plot of the proportion of general worry responses by region
   # use selected.regions.data2
-  output$responsePlot <- renderPlot({
+  output$responsePlot1 <- renderPlot({
     
     worry <- sym(req(input$selected.worry))
     
@@ -103,6 +136,46 @@ server <- function(input, output) {
             legend.title = element_text(size = 14, face = "bold")) 
   })
   
+  # use selected.regions.data2
+  output$responsePlot2 <- renderPlot({
+    
+    trait <- sym(req(input$selected.trait))
+    
+    df3 <- san_andreas |> 
+      dplyr::rename("household income" = hhold_income,
+                    "sex" = female) |> 
+      select(!!trait, experience, prepared) |> 
+      dplyr::mutate(experience2 = case_when(experience == "No" ~ "No",
+                                            experience == "Yes, one or more minor ones" ~ "Yes (minor)",
+                                            experience == "Yes, one or more major ones" ~ "Yes (major)"),
+                    experience2 = factor(experience2, levels = c("No", "Yes (minor)", "Yes (major)"))
+      ) |> 
+      dplyr::group_by(!!trait, experience2) |> 
+      dplyr::count(prepared) |> 
+      dplyr::mutate(proportion = round(n/sum(n),2)) |> 
+      dplyr::filter(experience2 != is.na(experience2)) |>
+      dplyr::filter(!!trait != is.na(!!trait))
+    
+    ggplot(df3, 
+           aes(x = experience2,
+               y = proportion)) +
+      geom_col(aes(fill = prepared)) +
+      xlab("Past Experience") + 
+      ylab("Earthquake Preparedness") +
+      coord_flip() +
+      facet_wrap(vars(!!trait)) +
+      theme(legend.position = "top",
+            axis.text.x = element_text(face = "bold", size = 10),
+            axis.text.y = element_text(face = "bold", size = 12),
+            axis.title.x = element_text(size = 12, margin = margin(t = 15)),
+            axis.title.y = element_text(size = 12, margin = margin(r = 15)),
+            strip.text.x = element_text(size = 12, face = "bold"),
+            legend.text = element_text(size = 12, face = "bold"),
+            legend.title = element_text(size = 14, face = "bold")) +
+      guides(fill = guide_legend(title = "Have you taken any precautions for an earthquake?",
+                                 title.position = "top"))
+  })
+  
   
   # make a dataset that is reactive to regions selected
   selected.regions.data <- reactive(
@@ -113,7 +186,7 @@ server <- function(input, output) {
   
   # output table showing proportion of region that has
   # experienced an earthquake
-  output$responseTable <- DT::renderDataTable(DT::datatable(selected.regions.data() |> 
+  output$responseTable2 <- DT::renderDataTable(DT::datatable(selected.regions.data() |> 
                                                               select(region, experience, prepared) |> 
                                                               dplyr::group_by(region, experience) |> 
                                                               count(prepared) |> 
@@ -126,8 +199,8 @@ server <- function(input, output) {
                                                             options = list(searching = TRUE,
                                                                            lengthChange = FALSE,
                                                                            bPaginate = FALSE)
-  )
-  )
+                                                            )
+                                               )
   
 }
 
