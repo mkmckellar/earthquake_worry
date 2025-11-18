@@ -51,6 +51,12 @@ ui <- navbarPage(theme = "yeti",
                                           multiple = FALSE),
                               p("'The Big One' refers to a massive, catastrophic earthquake."),
                               hr(),
+                              # select regions for table
+                              selectInput(inputId = "selected.regions",
+                                          label = "Select regions for table",
+                                          selected = unique(san_andreas$region)[1:2],
+                                          choices = unique(san_andreas$region),
+                                          multiple = TRUE),
                               p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
                                        "Statistical group of states as defined by the US Census Bureau.")),
                               p("Data sourced from fivethirtyeight R package.")
@@ -59,7 +65,9 @@ ui <- navbarPage(theme = "yeti",
                             mainPanel(
                               add_busy_spinner(spin = "half-circle",
                                                position = "top-right"),
-                              plotOutput(outputId = "responsePlot1", width = "100%")
+                              plotOutput(outputId = "responsePlot1", width = "100%"),
+                              hr(),
+                              DT::dataTableOutput("responseTable2")
                               )
                             )
                           ),
@@ -75,13 +83,6 @@ ui <- navbarPage(theme = "yeti",
                                     data = san_andreas_traits,
                                     selected = "age"),
                               hr(),
-                              # select regions for table
-                              selectInput(inputId = "selected.regions",
-                                          label = "Select regions for table",
-                                          selected = unique(san_andreas$region)[1:2],
-                                          choices = unique(san_andreas$region),
-                                          multiple = TRUE),
-                              hr(),
                               p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
                               "Statistical group of states as defined by the US Census Bureau.")),
                               p("Data sourced from fivethirtyeight R package.")
@@ -90,9 +91,7 @@ ui <- navbarPage(theme = "yeti",
                             mainPanel(
                               add_busy_spinner(spin = "half-circle",
                                                position = "top-right"),
-                              plotOutput(outputId = "responsePlot2", width = "100%"),
-                              hr(),
-                              DT::dataTableOutput("responseTable2")
+                              plotOutput(outputId = "responsePlot2", width = "100%")
                               )
                             )
                           )
@@ -137,13 +136,19 @@ server <- function(input, output) {
   })
   
   # use selected.regions.data2
+  
+  # Need to fix sex response from logical to character, else male response won't visualize
   output$responsePlot2 <- renderPlot({
     
     trait <- sym(req(input$selected.trait))
     
+    # make another column named sex based on the logical female column
+    # use sex column for traits
     df3 <- san_andreas |> 
-      dplyr::rename("household income" = hhold_income,
-                    "sex" = female) |> 
+      dplyr::rename("household income" = hhold_income) |> 
+      dplyr::mutate(sex = case_when(female == TRUE ~ "female",
+                                    female == FALSE ~ "male")
+                    ) |> 
       select(!!trait, experience, prepared) |> 
       dplyr::mutate(experience2 = case_when(experience == "No" ~ "No",
                                             experience == "Yes, one or more minor ones" ~ "Yes (minor)",
@@ -159,11 +164,14 @@ server <- function(input, output) {
     ggplot(df3, 
            aes(x = experience2,
                y = proportion)) +
-      geom_col(aes(fill = prepared)) +
+      geom_col(aes(fill = prepared),
+               alpha = 0.85) +
       xlab("Past Experience") + 
       ylab("Earthquake Preparedness") +
       coord_flip() +
       facet_wrap(vars(!!trait)) +
+      # adding bw theme to align with other plot
+      theme_bw() +
       theme(legend.position = "top",
             axis.text.x = element_text(face = "bold", size = 10),
             axis.text.y = element_text(face = "bold", size = 12),
@@ -173,7 +181,9 @@ server <- function(input, output) {
             legend.text = element_text(size = 12, face = "bold"),
             legend.title = element_text(size = 14, face = "bold")) +
       guides(fill = guide_legend(title = "Have you taken any precautions for an earthquake?",
-                                 title.position = "top"))
+                                 title.position = "top")) +
+      # adding stronger color contrast
+      scale_fill_viridis_d()
   })
   
   
@@ -186,11 +196,13 @@ server <- function(input, output) {
   
   # output table showing proportion of region that has
   # experienced an earthquake
+  # need to fix s
   output$responseTable2 <- DT::renderDataTable(DT::datatable(selected.regions.data() |> 
                                                               select(region, experience, prepared) |> 
                                                               dplyr::group_by(region, experience) |> 
                                                               count(prepared) |> 
-                                                              dplyr::mutate("proportion of region by experience" = round(n/sum(n),2)) |> 
+                                                               # removing proportion of region b/c not intuitive in table
+                                                              #dplyr::mutate("proportion of region by experience" = round(n/sum(n),2)) |> 
                                                               dplyr::mutate(prepared = as.character(prepared),
                                                                             prepared = case_when(prepared == "FALSE" ~ "No",
                                                                                                  prepared == "TRUE" ~ "Yes")
@@ -201,6 +213,7 @@ server <- function(input, output) {
                                                                            bPaginate = FALSE)
                                                             )
                                                )
+
   
 }
 
