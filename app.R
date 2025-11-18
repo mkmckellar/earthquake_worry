@@ -58,7 +58,7 @@ ui <- navbarPage(theme = "yeti",
                                           choices = unique(san_andreas$region),
                                           multiple = TRUE),
                               p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
-                                       "Statistical group of states as defined by the US Census Bureau.")),
+                                       "Statistical grouping of states as defined by the US Census Bureau.")),
                               p("Data sourced from fivethirtyeight R package.")
                               ),
                             # Show a plot of the generated distribution
@@ -84,14 +84,16 @@ ui <- navbarPage(theme = "yeti",
                                     selected = "age"),
                               hr(),
                               p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
-                              "Statistical group of states as defined by the US Census Bureau.")),
+                              "Statistical grouping of states as defined by the US Census Bureau.")),
                               p("Data sourced from fivethirtyeight R package.")
                               ),
                             # Show a plot of the generated distribution
                             mainPanel(
                               add_busy_spinner(spin = "half-circle",
                                                position = "top-right"),
-                              plotOutput(outputId = "responsePlot2", width = "100%")
+                              plotOutput(outputId = "responsePlot2", width = "100%"),
+                              hr(),
+                              DT::dataTableOutput("responseTable3")
                               )
                             )
                           )
@@ -214,6 +216,44 @@ server <- function(input, output) {
                                                             )
                                                )
 
+  
+  
+  output$responseTable3 <- DT::renderDataTable({
+    
+    trait <- sym(req(input$selected.trait))
+    
+    # make another column named sex based on the logical female column
+    # use sex column for traits
+    df3 <- san_andreas |> 
+      dplyr::rename("household income" = hhold_income) |> 
+      dplyr::mutate(sex = case_when(female == TRUE ~ "female",
+                                    female == FALSE ~ "male"),
+                    sex = as.factor(sex),
+                    prepared = as.character(prepared),
+                    prepared = case_when(prepared == "FALSE" ~ "No",
+                                         prepared == "TRUE" ~ "Yes"),
+                    prepared = as.factor(prepared)
+      ) |> 
+      select(!!trait, experience, prepared) |> 
+      dplyr::mutate(experience = case_when(experience == "No" ~ "No",
+                                            experience == "Yes, one or more minor ones" ~ "Yes (minor)",
+                                            experience == "Yes, one or more major ones" ~ "Yes (major)"),
+                    experience = factor(experience, levels = c("No", "Yes (minor)", "Yes (major)"))
+      ) |> 
+      dplyr::group_by(!!trait, experience) |> 
+      dplyr::count(prepared) |> 
+      dplyr::filter(experience != is.na(experience)) |>
+      dplyr::filter(!!trait != is.na(!!trait))
+    
+    
+    DT::datatable(df3,
+                  filter = "top",
+                  caption = "Past experience with earthquakes increases likelihood of taking safety precautions.",
+                  options = list(searching = FALSE,
+                                 lengthChange = FALSE,
+                                 bPaginate = FALSE)
+                  )
+  })
   
 }
 
