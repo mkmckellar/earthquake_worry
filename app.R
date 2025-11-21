@@ -17,19 +17,30 @@ library(shinybusy)
 # I don't think I need to open the entire 538 library
 san_andreas <- fivethirtyeight::san_andreas
 
+# clean and update the san andreas data
+# add sex column based on female
+# changed prepared column from logical to character
+# simplify past experience column
+san_andreas <- san_andreas |> 
+  dplyr::mutate(sex = case_when(female == TRUE ~ "female",
+                                female == FALSE ~ "male"),
+                sex = as.factor(sex),
+                prepared2 = case_when(prepared == TRUE ~ "yes",
+                                      prepared == FALSE ~ "no"),
+                prepared2 = as.factor(prepared2),
+                experience2 = case_when(experience == "No" ~ "No",
+                                        experience == "Yes, one or more minor ones" ~ "Yes (minor)",
+                                        experience == "Yes, one or more major ones" ~ "Yes (major)"),
+                experience2 = factor(experience2, levels = c("No", "Yes (minor)", "Yes (major)"), ordered = TRUE),
+                'household income' = hhold_income)
+
 san_andreas_traits <- san_andreas |> 
-  select(age, hhold_income, region, female) |> 
-  rename("household income" = hhold_income,
-         "sex" = female)
+  select(age, `household income`, region, sex)
 
 # missing data by columns
 #sapply(san_andreas, function(x) sum(is.na(x)))
 
-# attach(san_andreas)
-
-# US census bureau definition of regions
-# https://en.wikipedia.org/wiki/List_of_regions_of_the_United_States
-
+#attach(san_andreas)
 
 # Define UI for application that draws a histogram
 ui <- navbarPage(theme = "yeti",
@@ -59,7 +70,8 @@ ui <- navbarPage(theme = "yeti",
                                           multiple = TRUE),
                               p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
                                        "Statistical grouping of states as defined by the US Census Bureau.")),
-                              p("Data sourced from fivethirtyeight R package.")
+                              p(tags$a(href = "https://github.com/fivethirtyeight/data/tree/master/san-andreas",
+                                       "Data sourced from fivethirtyeight R package."))
                               ),
                             # Show a plot of the generated distribution
                             mainPanel(
@@ -85,7 +97,8 @@ ui <- navbarPage(theme = "yeti",
                               hr(),
                               p(tags$a(href = "https://www2.census.gov/geo/pdfs/reference/GARM/Ch6GARM.pdf",
                               "Statistical grouping of states as defined by the US Census Bureau.")),
-                              p("Data sourced from fivethirtyeight R package.")
+                              p(tags$a(href = "https://github.com/fivethirtyeight/data/tree/master/san-andreas",
+                                       "Data sourced from fivethirtyeight R package."))
                               ),
                             # Show a plot of the generated distribution
                             mainPanel(
@@ -110,15 +123,16 @@ server <- function(input, output) {
     
     df2 <- san_andreas |> 
       rename("General" = worry_general) |> 
-      rename("The Big One" = worry_bigone) |> 
-      select(region, experience, !!worry) |> 
+      rename("The Big One" = worry_bigone) |>
+      # select simplified experience2
+      select(region, experience2, !!worry) |> 
       # remove NA values 
       dplyr::filter(region != is.na(region)) |> 
       dplyr::filter(!!worry != is.na(!!worry))
     
     ggplot(df2,
            aes(x = !!worry)) +
-      geom_bar(aes(fill = experience)) +
+      geom_bar(aes(fill = experience2)) +
       coord_flip() +
       theme_bw() +
       theme(legend.position = "top") +
@@ -130,8 +144,8 @@ server <- function(input, output) {
       theme(legend.position = "top",
             axis.text.x = element_text(face = "bold", size = 12),
             axis.text.y = element_text(face = "bold", size = 12),
-            axis.title.x = element_text(size = 12, margin = margin(t = 15)),
-            axis.title.y = element_text(size = 12, margin = margin(r = 15)),
+            axis.title.x = element_text(size = 14, margin = margin(t = 15)),
+            axis.title.y = element_text(size = 14, margin = margin(r = 15)),
             strip.text.x = element_text(size = 10),
             legend.text = element_text(size = 12, face = "bold"),
             legend.title = element_text(size = 14, face = "bold")) 
@@ -147,18 +161,9 @@ server <- function(input, output) {
     # make another column named sex based on the logical female column
     # use sex column for traits
     df3 <- san_andreas |> 
-      dplyr::rename("household income" = hhold_income) |> 
-      dplyr::mutate(sex = case_when(female == TRUE ~ "female",
-                                    female == FALSE ~ "male")
-                    ) |> 
-      select(!!trait, experience, prepared) |> 
-      dplyr::mutate(experience2 = case_when(experience == "No" ~ "No",
-                                            experience == "Yes, one or more minor ones" ~ "Yes (minor)",
-                                            experience == "Yes, one or more major ones" ~ "Yes (major)"),
-                    experience2 = factor(experience2, levels = c("No", "Yes (minor)", "Yes (major)"))
-      ) |> 
+      select(!!trait, experience2, prepared2) |> 
       dplyr::group_by(!!trait, experience2) |> 
-      dplyr::count(prepared) |> 
+      dplyr::count(prepared2) |> 
       dplyr::mutate(proportion = round(n/sum(n),2)) |> 
       dplyr::filter(experience2 != is.na(experience2)) |>
       dplyr::filter(!!trait != is.na(!!trait))
@@ -166,10 +171,10 @@ server <- function(input, output) {
     ggplot(df3, 
            aes(x = experience2,
                y = proportion)) +
-      geom_col(aes(fill = prepared),
+      geom_col(aes(fill = prepared2),
                alpha = 0.85) +
-      xlab("Past Experience") + 
-      ylab("Earthquake Preparedness") +
+      xlab("Past Experience with Earthquakes") + 
+      ylab("Proportion of Respondents Prepared for an Earthquake ") +
       coord_flip() +
       facet_wrap(vars(!!trait)) +
       # adding bw theme to align with other plot
@@ -177,8 +182,8 @@ server <- function(input, output) {
       theme(legend.position = "top",
             axis.text.x = element_text(face = "bold", size = 10),
             axis.text.y = element_text(face = "bold", size = 12),
-            axis.title.x = element_text(size = 12, margin = margin(t = 15)),
-            axis.title.y = element_text(size = 12, margin = margin(r = 15)),
+            axis.title.x = element_text(size = 14, margin = margin(t = 15)),
+            axis.title.y = element_text(size = 14, margin = margin(r = 15)),
             strip.text.x = element_text(size = 12, face = "bold"),
             legend.text = element_text(size = 12, face = "bold"),
             legend.title = element_text(size = 14, face = "bold")) +
@@ -200,15 +205,10 @@ server <- function(input, output) {
   # experienced an earthquake
   # need to fix s
   output$responseTable2 <- DT::renderDataTable(DT::datatable(selected.regions.data() |> 
-                                                              select(region, experience, prepared) |> 
-                                                              dplyr::group_by(region, experience) |> 
-                                                              count(prepared) |> 
-                                                               # removing proportion of region b/c not intuitive in table
-                                                              #dplyr::mutate("proportion of region by experience" = round(n/sum(n),2)) |> 
-                                                              dplyr::mutate(prepared = as.character(prepared),
-                                                                            prepared = case_when(prepared == "FALSE" ~ "No",
-                                                                                                 prepared == "TRUE" ~ "Yes")
-                                                              ),
+                                                              select(region, experience2, prepared2) |> 
+                                                              dplyr::group_by(region, experience2) |> 
+                                                              count(prepared2),
+                                                             colnames = c("Region","Past Experience","Prepared?","Count"),
                                                             caption = "Past experience with earthquakes increases likelihood of taking safety precautions.",
                                                             options = list(searching = TRUE,
                                                                            lengthChange = FALSE,
@@ -217,41 +217,33 @@ server <- function(input, output) {
                                                )
 
   
-  
+  # output response table for preparedness tab
+  # putting the reactive element within the renderDataTable function as a 
+  # counter example to responseTable2
   output$responseTable3 <- DT::renderDataTable({
     
     trait <- sym(req(input$selected.trait))
     
-    # make another column named sex based on the logical female column
-    # use sex column for traits
+    # note: need to eval filtering APP fxn in general
     df3 <- san_andreas |> 
-      dplyr::rename("household income" = hhold_income) |> 
-      dplyr::mutate(sex = case_when(female == TRUE ~ "female",
-                                    female == FALSE ~ "male"),
-                    sex = as.factor(sex),
-                    prepared = as.character(prepared),
-                    prepared = case_when(prepared == "FALSE" ~ "No",
-                                         prepared == "TRUE" ~ "Yes"),
-                    prepared = as.factor(prepared)
-      ) |> 
-      select(!!trait, experience, prepared) |> 
-      dplyr::mutate(experience = case_when(experience == "No" ~ "No",
-                                            experience == "Yes, one or more minor ones" ~ "Yes (minor)",
-                                            experience == "Yes, one or more major ones" ~ "Yes (major)"),
-                    experience = factor(experience, levels = c("No", "Yes (minor)", "Yes (major)"))
-      ) |> 
-      dplyr::group_by(!!trait, experience) |> 
-      dplyr::count(prepared) |> 
-      dplyr::filter(experience != is.na(experience)) |>
+      # trait selected from dropdown input in sidebar
+      select(!!trait, experience2, prepared2) |> 
+      dplyr::group_by(!!trait, experience2) |> 
+      dplyr::count(prepared2) |> 
+      dplyr::filter(experience2 != is.na(experience2)) |>
       dplyr::filter(!!trait != is.na(!!trait))
     
     
+    # removed filter option b/c it's not working
+    #
     DT::datatable(df3,
-                  filter = "top",
-                  caption = "Past experience with earthquakes increases likelihood of taking safety precautions.",
-                  options = list(searching = FALSE,
+                  caption = "Past experience with earthquakes increases likelihood of taking safety precautions regardless of other traits.",
+                  options = list(searching = TRUE,
                                  lengthChange = FALSE,
-                                 bPaginate = FALSE)
+                                 bPaginate = TRUE),
+                  colnames = c("Past Experience" = "experience2",
+                               "Prepared?" = "prepared2",
+                               "Count" = "n")
                   )
   })
   
